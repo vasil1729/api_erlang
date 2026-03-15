@@ -1,0 +1,6 @@
+-name freeapi@127.0.0.1
+-setcookie freeapi_secret_cookie
++P 1000000
++K true
++A 64
++SDio 64

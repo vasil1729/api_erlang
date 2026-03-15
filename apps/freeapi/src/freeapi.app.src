@@ -1,0 +1,12 @@
+{application, freeapi, [
+    {description, "FreeAPI Hub - Erlang/OTP Implementation"},
+    {vsn, "0.1.0"},
+    {registered, []},
+    {mod, {freeapi_app, []}},
+    {applications, [
+        kernel, stdlib, sasl, crypto, ssl,
+        cowboy, jiffy, mongodb, poolboy, jwt, bcrypt, uuid, hackney
+    ]},
+    {env, []},
+    {modules, []}
+]}.

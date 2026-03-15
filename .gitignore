@@ -1,0 +1,12 @@
+_build/
+deps/
+*.beam
+*.ez
+erl_crash.dump
+.rebar3/
+rebar.lock
+*.swp
+*.swo
+*~
+uploads/*
+!uploads/.gitkeep
