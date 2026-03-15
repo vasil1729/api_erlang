@@ -199,6 +199,99 @@ For each endpoint category:
 
 ## Testing Guidelines
 
+### ⚠️ Test-Driven Development (TDD) Required
+
+**All new code must follow TDD workflow:**
+
+1. **Write the test FIRST** — before any implementation
+2. **Run the test** — watch it fail (Red phase)
+3. **Write minimal code** to make the test pass (Green phase)
+4. **Refactor** — improve code quality while keeping tests green
+5. **Repeat** for each behavior/edge case
+
+### TDD Workflow for Endpoints
+
+For each endpoint, follow this order:
+
+```
+1. Write failing Common Test suite
+   └─► Define expected request/response
+   └─► Define edge cases (400, 401, 404, etc.)
+
+2. Implement minimal handler code
+   └─► Add route to router
+   └─► Implement handler action clause
+   └─► Return hardcoded response
+
+3. Run test — verify it passes
+
+4. Implement actual logic
+   └─► Add model layer (if DB-backed)
+   └─► Add service layer (if complex logic)
+   └─► Refactor while tests stay green
+
+5. Add more tests for edge cases
+   └─► Invalid input (400)
+   └─► Missing auth (401)
+   └─► Not found (404)
+   └─► Forbidden (403)
+```
+
+### Example TDD Flow: Implementing `GET /api/v1/public/randomusers`
+
+**Step 1 — Write the test first** (`test/public_api_SUITE.erl`):
+```erlang
+get_randomusers_returns_paginated_list(_Config) ->
+    %% Arrange
+    ExpectedStatus = 200,
+    
+    %% Act
+    {ok, {{_, ExpectedStatus, _}, _Headers, Body}} = 
+        httpc:request(get, {"http://localhost:8080/api/v1/public/randomusers", []}, [], []),
+    
+    %% Assert
+    #{<<"statusCode">> := ExpectedStatus, 
+      <<"data">> := Data,
+      <<"success">> := true} = jiffy:decode(Body, [return_maps]),
+    true = is_list(Data),
+    10 = length(Data).  %% Default limit
+```
+
+**Step 2 — Run test (expect failure)**:
+```bash
+rebar3 ct --suite=public_api_SUITE
+% FAIL: Function clause not found or endpoint not routed
+```
+
+**Step 3 — Implement minimal handler**:
+```erlang
+%% In handlers/public/randomuser_h.erl
+init(Req0, [list]) ->
+    Items = [],  %% TODO: load from ETS
+    Req = response:success(Req0, 200, Items),
+    {ok, Req, []}.
+```
+
+**Step 4 — Run test again (should pass)**:
+```bash
+rebar3 ct --suite=public_api_SUITE
+% PASS
+```
+
+**Step 5 — Refactor with actual implementation**:
+```erlang
+init(Req0, [list]) ->
+    {Page, Limit} = pagination:parse_query(Req0),
+    {Items, Total} = freeapi_json_cache:get_page(randomusers, Page, Limit),
+    Req = response:paginated(Req0, 200, Items, Page, Limit, Total),
+    {ok, Req, []}.
+```
+
+**Step 6 — Add more tests** for edge cases:
+- Invalid page/limit parameters
+- Out-of-range page numbers
+- Search/filter functionality
+
 ### Test Structure
 ```
 apps/freeapi/test/
@@ -227,7 +320,245 @@ rebar3 ct --suite=auth_SUITE
 
 # With coverage
 rebar3 cover
+
+# Run tests during development (after each change)
+rebar3 ct --watch  # If available, or manually re-run
 ```
+
+### TDD Checklist for Each Endpoint
+
+- [ ] Read endpoint spec in `API_SPEC.md`
+- [ ] Write test for happy path (200/201 response)
+- [ ] Write test for each error case (400, 401, 403, 404)
+- [ ] Run tests — all should fail
+- [ ] Implement minimal code to pass happy path test
+- [ ] Run tests — happy path passes
+- [ ] Implement error handling
+- [ ] Run tests — all pass
+- [ ] Refactor (extract functions, improve naming)
+- [ ] Run tests — still all pass
+- [ ] Commit with test + implementation together
+
+---
+
+### ⚠️ One Commit Per API Endpoint
+
+**Rule**: Each API endpoint implementation must be a single, atomic commit containing:
+
+1. **Integration tests** (Common Test suite or new test function)
+2. **Unit tests** (EUnit tests for helper functions, validators, models)
+3. **Handler implementation**
+4. **Model/Service layer** (if applicable)
+5. **Route registration** (if new endpoint)
+
+**Example commit structure:**
+```
+feat: implement GET /api/v1/public/randomusers
+
+Tests:
+- Add integration test in public_api_SUITE.erl
+- Add unit tests for pagination helpers
+
+Implementation:
+- Add route to freeapi_router.erl
+- Implement randomuser_h:init/2 with [list] action
+- Use freeapi_json_cache:get_page/3 for ETS lookup
+
+Verification:
+- rebar3 ct --suite=public_api_SUITE  ✓ PASS
+- rebar3 ct                           ✓ PASS
+```
+
+**Why atomic commits?**
+- Easy to review and understand
+- Simple to revert if issues arise
+- Clear git history for each endpoint
+- Enables bisect for debugging
+
+**What NOT to do:**
+❌ Commit tests separately from implementation
+❌ Bundle multiple endpoints in one commit
+❌ Commit implementation without tests
+❌ Add unrelated refactoring in endpoint commits
+
+---
+
+### ⚠️ Both Integration and Unit Tests Required
+
+**Every endpoint must have:**
+
+#### 1. Integration Tests (Common Test)
+Location: `apps/freeapi/test/<category>_SUITE.erl`
+
+Tests the full HTTP request/response cycle:
+```erlang
+%% Integration test - tests the entire stack
+get_randomusers_returns_paginated_list(_Config) ->
+    {ok, {{_, 200, _}, _Headers, Body}} = 
+        httpc:request(get, {"http://localhost:8080/api/v1/public/randomusers", []}, [], []),
+    #{<<"statusCode">> := 200, <<"data">> := Data} = jiffy:decode(Body, [return_maps]),
+    true = is_list(Data),
+    10 = length(Data).
+```
+
+**Coverage:**
+- Happy path (200/201)
+- All error cases (400, 401, 403, 404)
+- Edge cases (invalid params, missing headers)
+- Auth requirements (if applicable)
+
+#### 2. Unit Tests (EUnit)
+Location: Same file as the module being tested (`*_test.erl` or inline `-ifdef(TEST)`)
+
+Tests individual functions in isolation:
+```erlang
+%% Unit tests for pagination.erl
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+
+parse_query_default_test() ->
+    %% Mock request with no query params
+    Req = mock_request_with_query(<<>>),
+    {1, 10} = pagination:parse_query(Req).
+
+parse_query_custom_page_limit_test() ->
+    Req = mock_request_with_query(<<"page=5&limit=20">>),
+    {5, 20} = pagination:parse_query(Req).
+
+parse_query_invalid_page_test() ->
+    Req = mock_request_with_query(<<"page=abc">>),
+    {1, 10} = pagination:parse_query(Req).  %% Falls back to default
+-endif.
+```
+
+**Coverage:**
+- Helper functions (`utils/`)
+- Model CRUD operations
+- Service layer logic
+- Validator functions
+- Edge cases and boundary conditions
+
+#### Test File Organization
+
+```
+apps/freeapi/test/
+├── healthcheck_SUITE.erl          # Common Test integration
+├── public_api_SUITE.erl           # Common Test integration
+├── auth_SUITE.erl                 # Common Test integration
+├── todo_SUITE.erl                 # Common Test integration
+├── ecommerce_SUITE.erl            # Common Test integration
+├── social_media_SUITE.erl         # Common Test integration
+├── chat_SUITE.erl                 # Common Test integration
+└── kitchen_sink_SUITE.erl         # Common Test integration
+
+apps/freeapi/src/
+├── utils/
+│   ├── pagination.erl
+│   ├── pagination_test.erl        # EUnit tests (separate file)
+│   ├── validator.erl
+│   └── validator_test.erl         # EUnit tests (separate file)
+├── models/
+│   ├── user_model.erl
+│   └── user_model_test.erl        # EUnit tests for model functions
+└── handlers/
+    └── *_h.erl                    # May include -ifdef(TEST) blocks
+```
+
+#### Running All Tests
+
+```bash
+# Run integration tests (Common Test)
+rebar3 ct
+
+# Run unit tests (EUnit)
+rebar3 eunit
+
+# Run all tests
+rebar3 do eunit, ct
+
+# Run with coverage
+rebar3 cover
+```
+
+#### Pre-Commit Checklist
+
+Before committing an endpoint implementation:
+
+- [ ] Integration test(s) written and passing
+- [ ] Unit test(s) for new functions written and passing
+- [ ] `rebar3 do eunit, ct` passes completely
+- [ ] No test warnings or skip reasons
+- [ ] Commit message describes the endpoint + tests
+
+---
+
+### ⚠️ Track Progress in API_SPEC.md
+
+**Rule**: Use `API_SPEC.md` as the single source of truth for implementation progress.
+
+#### Before Implementing Any Endpoint
+
+1. **Check the current status** in `API_SPEC.md`
+2. **Look for the checkbox** next to the endpoint
+3. **Verify it's not already implemented**
+
+#### After Completing an Endpoint
+
+1. **Update the checkbox** in `API_SPEC.md` with ✅
+2. **Add a note** with the commit hash
+3. **Commit the API_SPEC.md change** with the implementation
+
+#### Checkbox Format
+
+In `API_SPEC.md`, each endpoint has a checkbox:
+
+```markdown
+### 2.1 Random Users
+
+- [ ] `GET /api/v1/public/randomusers`
+- [ ] `GET /api/v1/public/randomusers/:userId`
+- [ ] `GET /api/v1/public/randomusers/user/random`
+```
+
+After implementation:
+
+```markdown
+### 2.1 Random Users
+
+- [x] `GET /api/v1/public/randomusers` ✅ (commit: abc1234)
+- [ ] `GET /api/v1/public/randomusers/:userId`
+- [ ] `GET /api/v1/public/randomusers/user/random`
+```
+
+#### Progress Tracking Commands
+
+```bash
+# Count implemented endpoints
+grep -c "\[x\]" API_SPEC.md
+
+# Count remaining endpoints
+grep -c "\[ \]" API_SPEC.md
+
+# Calculate completion percentage
+total=$(grep -c "GET\|POST\|PUT\|PATCH\|DELETE" API_SPEC.md)
+done=$(grep -c "\[x\]" API_SPEC.md)
+echo "Progress: $done/$total ($(($done * 100 / $total))%)"
+```
+
+#### Why Track in API_SPEC.md?
+
+- ✅ **Single source of truth** — no separate tracking files
+- ✅ **Git history** — commits show what was implemented when
+- ✅ **Easy to scan** — see progress at a glance
+- ✅ **Motivation** — watch the ✅ count grow
+- ✅ **Accountability** — clear what's done vs. pending
+
+#### What NOT to Do
+
+❌ Don't track progress in separate files (TODO.md, PROGRESS.md, etc.)
+❌ Don't update checkboxes without committing the implementation
+❌ Don't mark as done until all tests pass
+❌ Don't bundle multiple endpoint checkboxes in one commit
 
 ---
 
