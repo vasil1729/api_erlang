@@ -10,3 +10,4 @@ rebar.lock
 *~
 uploads/*
 !uploads/.gitkeep
+.commit_msg
