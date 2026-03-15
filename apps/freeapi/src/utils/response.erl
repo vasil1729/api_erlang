@@ -7,25 +7,58 @@
 %% Use jiffy:encode/1 for JSON serialization.
 %% Set content-type header to application/json.
 
-%% TODO: success(Req, StatusCode, Data) -> Req
-%% Returns: {"statusCode": N, "data": Data, "message": "Success", "success": true}
-success(_Req, _Status, _Data) -> erlang:error(not_implemented).
+success(Req, Status, Data) ->
+    Message = case Status of
+        200 -> <<"OK">>;
+        _ -> <<"Success">>
+    end,
+    Body = jiffy:encode(#{
+        <<"statusCode">> => Status,
+        <<"data">> => Data,
+        <<"message">> => Message,
+        <<"success">> => true
+    }),
+    cowboy_req:reply(Status, #{<<"content-type">> => <<"application/json">>}, Body, Req).
 
-%% TODO: created(Req, StatusCode, Data) -> Req  (for 201 responses)
-created(_Req, _Status, _Data) -> erlang:error(not_implemented).
+created(Req, Status, Data) ->
+    Body = jiffy:encode(#{
+        <<"statusCode">> => Status,
+        <<"data">> => Data,
+        <<"message">> => <<"Created">>,
+        <<"success">> => true
+    }),
+    cowboy_req:reply(Status, #{<<"content-type">> => <<"application/json">>}, Body, Req).
 
-%% TODO: paginated(Req, Status, Items, Page, Limit, TotalItems) -> Req
-%% Returns standard envelope plus "pagination" key:
-%% {"page": N, "limit": N, "totalItems": N, "totalPages": N, "hasNext": bool, "hasPrev": bool}
-paginated(_Req, _Status, _Items, _Page, _Limit, _Total) -> erlang:error(not_implemented).
+paginated(Req, Status, Items, Page, Limit, Total) ->
+    TotalPages = (Total + Limit - 1) div Limit,
+    Body = jiffy:encode(#{
+        <<"statusCode">> => Status,
+        <<"data">> => Items,
+        <<"message">> => <<"Success">>,
+        <<"success">> => true,
+        <<"pagination">> => #{
+            <<"page">> => Page,
+            <<"limit">> => Limit,
+            <<"totalItems">> => Total,
+            <<"totalPages">> => TotalPages,
+            <<"hasNext">> => Page < TotalPages,
+            <<"hasPrev">> => Page > 1
+        }
+    }),
+    cowboy_req:reply(Status, #{<<"content-type">> => <<"application/json">>}, Body, Req).
 
-%% TODO: error(Req, StatusCode, Message) -> Req
-%% Returns: {"statusCode": N, "data": null, "message": Msg, "success": false, "errors": []}
-error(_Req, _Status, _Message) -> erlang:error(not_implemented).
+error(Req, Status, Message) ->
+    error(Req, Status, Message, []).
 
-%% TODO: error(Req, StatusCode, Message, Errors) -> Req
-%% Errors = [#{<<"field">> => FieldName, <<"message">> => ErrMsg}]
-error(_Req, _Status, _Message, _Errors) -> erlang:error(not_implemented).
+error(Req, Status, Message, Errors) ->
+    Body = jiffy:encode(#{
+        <<"statusCode">> => Status,
+        <<"data">> => null,
+        <<"message">> => Message,
+        <<"success">> => false,
+        <<"errors">> => Errors
+    }),
+    cowboy_req:reply(Status, #{<<"content-type">> => <<"application/json">>}, Body, Req).
 
-%% TODO: no_content(Req) -> Req  (204 with no body)
-no_content(_Req) -> erlang:error(not_implemented).
+no_content(Req) ->
+    cowboy_req:reply(204, #{}, <<>>, Req).

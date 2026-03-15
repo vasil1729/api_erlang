@@ -71,34 +71,46 @@ api_erlang/
 
 ### Prerequisites
 
-- Erlang/OTP 27+
-- rebar3
+- Erlang/OTP 27+ (tested on OTP 28)
+- rebar3 (install: `curl -O https://s3.amazonaws.com/rebar3/rebar3 && chmod +x rebar3 && mv rebar3 ~/bin/`)
 - MongoDB 7+
-
-### Run with Docker
-
-```bash
-docker-compose up
-```
-
-The API will be available at `http://localhost:8080`.
+- Docker (optional, for MongoDB)
 
 ### Run locally
 
 ```bash
-# Start MongoDB
-mongod --dbpath /tmp/freeapi-data
+# Start MongoDB (using Docker)
+docker run -d --name freeapi-mongo -p 27017:27017 mongo:7
 
-# Compile and run
+# Or install MongoDB locally and run:
+# mongod --dbpath /tmp/freeapi-data
+
+# Compile (note: qdate removed due to Erlang 28 incompatibility)
 rebar3 compile
+
+# Run in development shell
 rebar3 shell
-```
 
-### Build a release
-
-```bash
+# Or build a production release and run
 rebar3 as prod release
 _build/prod/rel/freeapi/bin/freeapi foreground
+```
+
+The API will be available at `http://localhost:8080`.
+
+### Run with Docker
+
+```bash
+docker-compose up --build
+```
+
+Note: The Docker build may take a while. For faster development, use the local setup above.
+
+### Verify installation
+
+```bash
+curl http://localhost:8080/api/v1/healthcheck
+# Expected: {"success":true,"statusCode":200,"message":"OK","data":null}
 ```
 
 ## Configuration

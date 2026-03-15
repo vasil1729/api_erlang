@@ -15,5 +15,9 @@ start_link() ->
 %% Restart intensity: 5 restarts in 10 seconds
 
 init([]) ->
-    %% TODO: implement
-    {ok, {{one_for_one, 5, 10}, []}}.
+    ChildSpecs = [
+        %% {freeapi_db_sup, {freeapi_db_sup, start_link, []}, permanent, 5000, supervisor, [freeapi_db_sup]},
+        %% {freeapi_json_cache, {freeapi_json_cache, start_link, []}, permanent, 5000, worker, [freeapi_json_cache]},
+        %% {freeapi_chat_registry, {freeapi_chat_registry, start_link, []}, permanent, 5000, worker, [freeapi_chat_registry]}
+    ],
+    {ok, {{one_for_one, 5, 10}, ChildSpecs}}.
