@@ -1,7 +1,7 @@
 #!/bin/bash
 # apps/freeapi/curl/test_healthcheck.sh
 
-BASE_URL="${BASE_URL:-http://localhost:3000}"
+BASE_URL="${BASE_URL:-http://localhost:8080}"
 PASS=0
 FAIL=0
 
