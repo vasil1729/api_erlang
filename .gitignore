@@ -11,3 +11,4 @@ rebar.lock
 uploads/*
 !uploads/.gitkeep
 excalidraw.log
+.commit_msg

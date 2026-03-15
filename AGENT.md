@@ -489,6 +489,209 @@ Before committing an endpoint implementation:
 - [ ] `rebar3 do eunit, ct` passes completely
 - [ ] No test warnings or skip reasons
 - [ ] Commit message describes the endpoint + tests
+- [ ] curl test(s) added and verified
+
+---
+
+### ⚠️ curl Tests Required for Manual Verification
+
+**Rule**: Every endpoint must include curl test commands for manual verification.
+
+#### Why curl Tests?
+
+- ✅ **Quick manual testing** — No Erlang shell needed
+- ✅ **Copy-paste ready** — Easy to share in issues/PRs
+- ✅ **Documentation** — Shows exact request format
+- ✅ **Debugging** — Isolate issues without test suite overhead
+- ✅ **CI/CD ready** — Can be scripted in shell scripts
+
+#### Where to Store curl Tests
+
+Create a `curl/` directory alongside `test/`:
+
+```
+apps/freeapi/
+├── test/
+│   ├── healthcheck_SUITE.erl
+│   └── ...
+└── curl/
+    ├── test_healthcheck.sh
+    ├── test_public_apis.sh
+    ├── test_auth.sh
+    ├── test_todo.sh
+    ├── test_ecommerce.sh
+    ├── test_social_media.sh
+    ├── test_chat.sh
+    └── test_kitchen_sink.sh
+```
+
+#### curl Test Format
+
+Each endpoint test should include:
+
+1. **Request** — Full curl command with headers, body, query params
+2. **Expected response** — Status code and sample JSON
+3. **Description** — What's being tested
+
+**Example: `curl/test_public_apis.sh`**
+
+```bash
+#!/bin/bash
+# Test: GET /api/v1/public/randomusers
+# Description: Returns paginated list of random users
+# Expected: 200 OK with array of user objects
+
+curl -s -X GET "http://localhost:8080/api/v1/public/randomusers?page=1&limit=5" \
+  -H "Content-Type: application/json" | jq '.'
+
+# Expected response:
+# {
+#   "statusCode": 200,
+#   "data": [...],
+#   "message": "OK",
+#   "success": true,
+#   "pagination": {...}
+# }
+```
+
+**Example: Auth endpoint with Bearer token**
+
+```bash
+#!/bin/bash
+# Test: GET /api/v1/users/current-user
+# Description: Get current authenticated user
+# Expected: 200 OK with user object (requires auth)
+
+TOKEN="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+
+curl -s -X GET "http://localhost:8080/api/v1/users/current-user" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" | jq '.'
+
+# Expected response:
+# {
+#   "statusCode": 200,
+#   "data": {
+#     "_id": "...",
+#     "username": "...",
+#     "email": "..."
+#   },
+#   "success": true
+# }
+```
+
+**Example: POST with JSON body**
+
+```bash
+#!/bin/bash
+# Test: POST /api/v1/users/register
+# Description: Register a new user
+# Expected: 201 Created with user + tokens
+
+curl -s -X POST "http://localhost:8080/api/v1/users/register" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "username": "testuser",
+    "email": "test@example.com",
+    "password": "password123"
+  }' | jq '.'
+
+# Expected response:
+# {
+#   "statusCode": 201,
+#   "data": {
+#     "user": {...},
+#     "accessToken": "...",
+#     "refreshToken": "..."
+#   },
+#   "message": "User registered successfully",
+#   "success": true
+# }
+```
+
+#### curl Test Script Template
+
+Create reusable test scripts with assertions:
+
+```bash
+#!/bin/bash
+# apps/freeapi/curl/test_healthcheck.sh
+
+BASE_URL="${BASE_URL:-http://localhost:8080}"
+PASS=0
+FAIL=0
+
+test_endpoint() {
+    local name="$1"
+    local method="$2"
+    local endpoint="$3"
+    local expected_status="$4"
+    local data="$5"
+    
+    echo -n "Testing $name... "
+    
+    if [ -n "$data" ]; then
+        response=$(curl -s -w "\n%{http_code}" -X "$method" "$BASE_URL$endpoint" \
+            -H "Content-Type: application/json" \
+            -d "$data")
+    else
+        response=$(curl -s -w "\n%{http_code}" -X "$method" "$BASE_URL$endpoint")
+    fi
+    
+    body=$(echo "$response" | head -n -1)
+    status=$(echo "$response" | tail -n 1)
+    
+    if [ "$status" = "$expected_status" ]; then
+        echo "✅ PASS (status: $status)"
+        ((PASS++))
+    else
+        echo "❌ FAIL (expected: $expected_status, got: $status)"
+        echo "Response: $body"
+        ((FAIL++))
+    fi
+}
+
+# Run tests
+echo "=== Healthcheck API Tests ==="
+test_endpoint "GET /api/v1/healthcheck" "GET" "/api/v1/healthcheck" "200"
+
+# Summary
+echo ""
+echo "=== Summary ==="
+echo "Passed: $PASS"
+echo "Failed: $FAIL"
+
+[ $FAIL -eq 0 ] && exit 0 || exit 1
+```
+
+#### Running curl Tests
+
+```bash
+# Make scripts executable
+chmod +x apps/freeapi/curl/*.sh
+
+# Run individual test script
+apps/freeapi/curl/test_healthcheck.sh
+
+# Run all curl tests
+for script in apps/freeapi/curl/test_*.sh; do
+    echo "Running $script..."
+    bash "$script"
+done
+
+# Or use a test runner script
+apps/freeapi/curl/run_all_tests.sh
+```
+
+#### Pre-Commit Checklist for curl Tests
+
+For each endpoint implementation:
+
+- [ ] curl command documented in test script
+- [ ] Request format matches API spec (headers, body, params)
+- [ ] Expected response documented
+- [ ] Test script is executable (`chmod +x`)
+- [ ] Manual verification completed (test passes)
 
 ---
 
