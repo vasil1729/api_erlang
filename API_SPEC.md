@@ -94,6 +94,8 @@ For list endpoints with pagination:
 
 ### 1.1 `GET /api/v1/healthcheck`
 
+- [x] `GET /api/v1/healthcheck` ✅
+
 **Purpose**: Verify API is running.
 
 - **Auth**: None

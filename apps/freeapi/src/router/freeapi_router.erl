@@ -104,4 +104,8 @@
 
 dispatch() ->
     %% TODO: implement full dispatch table
-    cowboy_router:compile([{'_', []}]).
+    cowboy_router:compile([
+        {'_', [
+            {"/api/v1/healthcheck", healthcheck_h, []}
+        ]}
+    ]).
